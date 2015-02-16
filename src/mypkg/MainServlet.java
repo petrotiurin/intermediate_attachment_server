@@ -44,11 +44,36 @@ public class MainServlet extends HttpServlet {
 
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 	      // Allocate a output writer to write the response message into the network socket
-	      PrintWriter out = response.getWriter();
+	      // TODO: change headers to parameters
+	      String docId = request.getHeader("DocId");
+	      String revId = request.getHeader("RevId");
+	      
 	      try {
-	         out.println("Hello World!");
+	    	  File f = new File(docId); 
+	    	  if (!f.isFile()) {
+	    	      PrintWriter out = response.getWriter();
+	    		  String file = getAttachment(docId, revId);
+	    		  // output the length
+	    		  out.println(new File(file).length());
+	    		  System.out.println("Got the file");
+	    	  } else {
+	    		  // Use output stream to write binary data
+	    	      OutputStream os = response.getOutputStream();
+	    		  int start = Integer.parseInt(request.getHeader("Start"));
+	    		  int end = Integer.parseInt(request.getHeader("End"));
+	    		  if (end > f.length()) end = (int) f.length(); // TODO: safe cast.
+	    		  byte[] buffer = new byte[end - start];
+	    		  FileInputStream in = new FileInputStream(f);
+	    		  in.skip(start);
+	    		  in.read(buffer);
+	    		  response.setContentLengthLong(end - start);
+	    		  response.setContentType("application/octet-stream");
+	    		  os.write(buffer);
+	    		  os.flush();
+	    		  os.close();
+	    		  in.close();
+	    	  }
 	      } finally {
-	         out.close(); 
 	      }
 	}
 	
@@ -80,6 +105,22 @@ public class MainServlet extends HttpServlet {
 	    	  is.close();
 	    	  out.close();
 	      }
+	}
+	
+	private String getAttachment(String docId, String revId) throws IOException{
+		URL url = new URL("http://" + SERVER + ":" + PORT + "/" + PATH + "/" + docId + "/" + "attachment");
+		HttpURLConnection httpCon = (HttpURLConnection) url.openConnection();
+		httpCon.setDoOutput(true);
+		httpCon.setRequestMethod("GET");
+		httpCon.setRequestProperty("Content-Type", "application/octet-stream");
+		httpCon.setRequestProperty("If-Match", revId);
+		InputStream response = httpCon.getInputStream();
+		String filepath = docId;
+		FileOutputStream fs = new FileOutputStream(filepath);
+		IOUtils.copy(response,fs);
+		response.close();
+		fs.close();
+		return filepath;
 	}
 	
 	private String sendAttachment(FileInputStream fi, String docId, String revId) throws IOException {
