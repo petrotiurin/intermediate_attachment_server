@@ -96,26 +96,25 @@ public class MainServlet extends HttpServlet {
 	      String docId = request.getHeader("DocId");
 	      String revId = request.getHeader("RevId");
 
-		  int start = Integer.parseInt(request.getHeader("Start"));
-		  int end = Integer.parseInt(request.getHeader("End"));
-
-    	  FileChannel fc = FileChannel.open(Paths.get("out_file.png"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+    	  FileChannel fc = FileChannel.open(Paths.get(docId), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     	  
 	      try {
-	    	  fc.position(start);
-	    	  byte[] buffer = new byte[end-start];
-	    	  is.read(buffer);
-	    	  fc.write(ByteBuffer.wrap(buffer));
-	    	  
-		      if (docId != null && revId != null) {
+	    	  if (revId != null) {
 		    	  // Send it to the database.
-		    	  FileInputStream fi = new FileInputStream("out_file.png");
+		    	  fc.close();
+		    	  FileInputStream fi = new FileInputStream(docId);
 		    	  String resp_json = this.sendAttachment(fi, docId, revId);
 		    	  out.println(resp_json);
+		    	  Files.delete(Paths.get(docId));
 		      } else {
-			      out.println("Chunk received");
-		      }
-		      
+				  int start = Integer.parseInt(request.getHeader("Start"));
+				  int end = Integer.parseInt(request.getHeader("End"));
+		    	  fc.position(start);
+		    	  byte[] buffer = new byte[end-start];
+		    	  is.read(buffer);
+		    	  fc.write(ByteBuffer.wrap(buffer));
+		    	  out.println("Chunk received");
+		      }		      
 	      } finally {
 	    	  is.close();
 	    	  out.close();
