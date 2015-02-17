@@ -14,6 +14,9 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.EnumSet;
 import java.util.UUID;
 
 import javax.servlet.ServletException;
@@ -22,8 +25,16 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+
 import org.apache.commons.io.IOUtils;
 
+import weka.core.PropertyPath.Path;
+
+import java.nio.file.attribute.BasicFileAttributes;
 /**
  * Servlet implementation class MainServlet
  */
@@ -84,19 +95,23 @@ public class MainServlet extends HttpServlet {
 	      
 	      String docId = request.getHeader("DocId");
 	      String revId = request.getHeader("RevId");
-	      
+
+		  int start = Integer.parseInt(request.getHeader("Start"));
+		  int end = Integer.parseInt(request.getHeader("End"));
+
+    	  FileChannel fc = FileChannel.open(Paths.get("out_file.png"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+    	  
 	      try {
-	    	  if (fs == null) {
-	    		  fs = new FileOutputStream("out_file.png");
-	    	  }
-	    	  IOUtils.copy(is,fs);
+	    	  fc.position(start);
+	    	  byte[] buffer = new byte[end-start];
+	    	  is.read(buffer);
+	    	  fc.write(ByteBuffer.wrap(buffer));
+	    	  
 		      if (docId != null && revId != null) {
 		    	  // Send it to the database.
 		    	  FileInputStream fi = new FileInputStream("out_file.png");
 		    	  String resp_json = this.sendAttachment(fi, docId, revId);
 		    	  out.println(resp_json);
-		    	  fs.close();
-		    	  fs = null;
 		      } else {
 			      out.println("Chunk received");
 		      }
@@ -104,6 +119,7 @@ public class MainServlet extends HttpServlet {
 	      } finally {
 	    	  is.close();
 	    	  out.close();
+	    	  fc.close();
 	      }
 	}
 	
