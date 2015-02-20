@@ -13,9 +13,14 @@ import java.io.PrintWriter;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.UUID;
 
@@ -109,14 +114,27 @@ public class MainServlet extends HttpServlet {
 		      } else {
 				  int start = Integer.parseInt(request.getHeader("Start"));
 				  int end = Integer.parseInt(request.getHeader("End"));
+				  String sent_md5 = request.getHeader("MD5");
 		    	  fc.position(start);
 		    	  byte[] buffer = new byte[end-start];
 		    	  is.read(buffer);
-		    	  fc.write(ByteBuffer.wrap(buffer));
-		    	  out.println("Chunk received");
+		    	  is.close();
+		    	  MessageDigest md = MessageDigest.getInstance("MD5");
+		    	  byte[] buffer_md5 = md.digest(buffer);
+		    	  if (sent_md5.equals(bytesToHex(buffer_md5))) {
+		    		  fc.write(ByteBuffer.wrap(buffer));
+		    		  out.println("Chunk received");
+		    	  } else {
+			    	  System.out.println("Checksum mismatch");
+		    		  out.println("Not received.");
+		    	  }
 		      }		      
+	      } catch (SocketTimeoutException e) {
+	    	  System.out.println("Server timeout.");
+	    	  out.println("Not received.");
+	      } catch (NoSuchAlgorithmException e) {
+	    	  e.printStackTrace();
 	      } finally {
-	    	  is.close();
 	    	  out.close();
 	    	  fc.close();
 	      }
@@ -165,5 +183,16 @@ public class MainServlet extends HttpServlet {
 		    read =br.readLine();
 		}
 		return sb.toString();
+	}
+	
+	public static String bytesToHex(byte[] bytes) {
+		char[] hexArray = "0123456789ABCDEF".toCharArray();
+	    char[] hexChars = new char[bytes.length * 2];
+	    for ( int j = 0; j < bytes.length; j++ ) {
+	        int v = bytes[j] & 0xFF;
+	        hexChars[j * 2] = hexArray[v >>> 4];
+	        hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+	    }
+	    return new String(hexChars);
 	}
 }
