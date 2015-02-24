@@ -72,6 +72,9 @@ public class MainServlet extends HttpServlet {
 	    		  // output the length
 	    		  out.println(new File(file).length());
 	    		  System.out.println("Got the file");
+	    	  } else if (request.getHeader("Start") == null) {
+	    	      PrintWriter out = response.getWriter();
+	    		  out.println(f.length());
 	    	  } else {
 	    		  // Use output stream to write binary data
 	    	      OutputStream os = response.getOutputStream();
