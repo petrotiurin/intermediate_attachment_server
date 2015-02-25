@@ -67,31 +67,35 @@ public class MainServlet extends HttpServlet {
 	      try {
 	    	  File f = new File(docId); 
 	    	  if (!f.isFile()) {
-	    	      PrintWriter out = response.getWriter();
+	    		  PrintWriter out = response.getWriter();
 	    		  String file = getAttachment(docId, revId);
 	    		  // output the length
 	    		  out.println(new File(file).length());
 	    		  System.out.println("Got the file");
 	    	  } else if (request.getHeader("Start") == null) {
-	    	      PrintWriter out = response.getWriter();
+	    		  PrintWriter out = response.getWriter();
 	    		  out.println(f.length());
 	    	  } else {
 	    		  // Use output stream to write binary data
-	    	      OutputStream os = response.getOutputStream();
+	    		  OutputStream os = response.getOutputStream();
 	    		  int start = Integer.parseInt(request.getHeader("Start"));
 	    		  int end = Integer.parseInt(request.getHeader("End"));
 	    		  if (end > f.length()) end = (int) f.length(); // TODO: safe cast.
-	    		  byte[] buffer = new byte[end - start];
+	    		  byte[] buffer = new byte[16 + end - start];
 	    		  FileInputStream in = new FileInputStream(f);
 	    		  in.skip(start);
-	    		  in.read(buffer);
-	    		  response.setContentLengthLong(end - start);
+	    		  in.read(buffer, 0, end - start);
+	    		  MessageDigest md = MessageDigest.getInstance("MD5");
+	    		  System.arraycopy(md.digest(buffer), 0, buffer, end - start, 16);
+	    		  response.setContentLengthLong(16 + end - start);
 	    		  response.setContentType("application/octet-stream");
 	    		  os.write(buffer);
 	    		  os.flush();
 	    		  os.close();
 	    		  in.close();
 	    	  }
+	      } catch (NoSuchAlgorithmException e) {
+	    	  e.printStackTrace();
 	      } finally {
 	      }
 	}
