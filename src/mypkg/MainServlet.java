@@ -81,15 +81,21 @@ public class MainServlet extends HttpServlet {
 	    		  int start = Integer.parseInt(request.getHeader("Start"));
 	    		  int end = Integer.parseInt(request.getHeader("End"));
 	    		  if (end > f.length()) end = (int) f.length(); // TODO: safe cast.
-	    		  byte[] buffer = new byte[16 + end - start];
+	    		  
+	    		  byte[] buffer = new byte[end - start];
 	    		  FileInputStream in = new FileInputStream(f);
 	    		  in.skip(start);
 	    		  in.read(buffer, 0, end - start);
+	    		  
 	    		  MessageDigest md = MessageDigest.getInstance("MD5");
-	    		  System.arraycopy(md.digest(buffer), 0, buffer, end - start, 16);
+	    		  byte[] new_buffer = new byte[16 + end - start];
+	    		  byte[] md5 = md.digest(buffer);
+	    		  System.arraycopy(buffer, 0, new_buffer, 0, end-start);
+	    		  System.arraycopy(md5, 0, new_buffer, end - start, 16);
+	    		  
 	    		  response.setContentLengthLong(16 + end - start);
 	    		  response.setContentType("application/octet-stream");
-	    		  os.write(buffer);
+	    		  os.write(new_buffer);
 	    		  os.flush();
 	    		  os.close();
 	    		  in.close();
