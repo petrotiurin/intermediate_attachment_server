@@ -1,29 +1,21 @@
 package mypkg;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.EnumSet;
-import java.util.UUID;
-
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -31,15 +23,10 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
 import org.apache.commons.io.IOUtils;
-
-import weka.core.PropertyPath.Path;
-
-import java.nio.file.attribute.BasicFileAttributes;
 /**
  * Servlet implementation class MainServlet
  */
@@ -52,88 +39,90 @@ public class MainServlet extends HttpServlet {
 	private static String SERVER = "127.0.0.1";
 	private static String PORT = "5984";
 	
-	private FileOutputStream fs = null;
-	
     public MainServlet() {
         super();
     }
 
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 	      // Allocate a output writer to write the response message into the network socket
-	      // TODO: change headers to parameters
 	      String docId = request.getHeader("DocId");
 	      String revId = request.getHeader("RevId");
 	      
 	      try {
 	    	  File f = new File(docId); 
 	    	  if (!f.isFile()) {
+	    		  // Get the file and output its length
 	    		  PrintWriter out = response.getWriter();
 	    		  String file = getAttachment(docId, revId);
-	    		  // output the length
 	    		  out.println(new File(file).length());
 	    		  System.out.println("Got the file");
 	    	  } else if (request.getHeader("Start") == null) {
+	    		  // If file present and byte range not specified
 	    		  PrintWriter out = response.getWriter();
 	    		  out.println(f.length());
 	    	  } else {
 	    		  // Use output stream to write binary data
 	    		  OutputStream os = response.getOutputStream();
-	    		  int start = Integer.parseInt(request.getHeader("Start"));
-	    		  int end = Integer.parseInt(request.getHeader("End"));
-	    		  if (end > f.length()) end = (int) f.length(); // TODO: safe cast.
+	    		  long start = Long.parseLong(request.getHeader("Start"));
+	    		  long end = Long.parseLong(request.getHeader("End"));
+	    		  if (end > f.length()) end = f.length();
+	    		  int chunk_size = (int) (end - start);
 	    		  
-	    		  byte[] buffer = new byte[end - start];
+	    		  // Read bytes from the file
+	    		  byte[] buffer = new byte[chunk_size];
 	    		  FileInputStream in = new FileInputStream(f);
 	    		  in.skip(start);
-	    		  in.read(buffer, 0, end - start);
+	    		  in.read(buffer, 0, chunk_size);
 	    		  
+	    		  // Append checksum at the end
 	    		  MessageDigest md = MessageDigest.getInstance("MD5");
-	    		  byte[] new_buffer = new byte[16 + end - start];
+	    		  byte[] chunk_with_checksum = new byte[16 + chunk_size];
 	    		  byte[] md5 = md.digest(buffer);
-	    		  System.arraycopy(buffer, 0, new_buffer, 0, end-start);
-	    		  System.arraycopy(md5, 0, new_buffer, end - start, 16);
+	    		  System.arraycopy(buffer, 0, chunk_with_checksum, 0, chunk_size);
+	    		  System.arraycopy(md5, 0, chunk_with_checksum, chunk_size, 16);
 	    		  
+	    		  // Send chunk
 	    		  response.setContentLengthLong(16 + end - start);
 	    		  response.setContentType("application/octet-stream");
-	    		  os.write(new_buffer);
+	    		  os.write(chunk_with_checksum);
 	    		  os.flush();
 	    		  os.close();
 	    		  in.close();
 	    	  }
 	      } catch (NoSuchAlgorithmException e) {
 	    	  e.printStackTrace();
-	      } finally {
 	      }
 	}
 	
 	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-		// Allocate a output writer to write the response message into the network socket
 	      PrintWriter out = response.getWriter();
-	      InputStream is = request.getInputStream();
 	      
 	      String docId = request.getHeader("DocId");
 	      String revId = request.getHeader("RevId");
-
-    	  FileChannel fc = FileChannel.open(Paths.get(docId), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     	  
 	      try {
 	    	  if (revId != null) {
 		    	  // Send it to the database.
-		    	  fc.close();
 		    	  FileInputStream fi = new FileInputStream(docId);
 		    	  String resp_json = this.sendAttachment(fi, docId, revId);
 		    	  out.println(resp_json);
 		    	  Files.delete(Paths.get(docId));
 		      } else {
-				  int start = Integer.parseInt(request.getHeader("Start"));
-				  int end = Integer.parseInt(request.getHeader("End"));
+		    	  // Receive file chunk
+				  long start = Long.parseLong(request.getHeader("Start"));
+				  long end = Long.parseLong(request.getHeader("End"));
+	    		  int chunk_size = (int) (end - start);
 				  String sent_md5 = request.getHeader("MD5");
-		    	  fc.position(start);
-		    	  byte[] buffer = new byte[end-start];
+		    	  byte[] buffer = new byte[chunk_size];
+				  
+		    	  FileChannel fc = FileChannel.open(Paths.get(docId), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+			      InputStream is = request.getInputStream();
 		    	  is.read(buffer);
-		    	  is.close();
+		    	  fc.position(start);
 		    	  MessageDigest md = MessageDigest.getInstance("MD5");
 		    	  byte[] buffer_md5 = md.digest(buffer);
+		    	  
+		    	  // Compare the checksums
 		    	  if (sent_md5.equals(bytesToHex(buffer_md5))) {
 		    		  fc.write(ByteBuffer.wrap(buffer));
 		    		  out.println("Chunk received");
@@ -141,6 +130,8 @@ public class MainServlet extends HttpServlet {
 			    	  System.out.println("Checksum mismatch");
 		    		  out.println("Not received.");
 		    	  }
+		    	  fc.close();
+		    	  is.close();
 		      }		      
 	      } catch (SocketTimeoutException e) {
 	    	  System.out.println("Server timeout.");
@@ -149,7 +140,6 @@ public class MainServlet extends HttpServlet {
 	    	  e.printStackTrace();
 	      } finally {
 	    	  out.close();
-	    	  fc.close();
 	      }
 	}
 	
