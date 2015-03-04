@@ -55,11 +55,12 @@ public class MainServlet extends HttpServlet {
 	    		  PrintWriter out = response.getWriter();
 	    		  String file = getAttachment(docId, revId);
 	    		  out.println(new File(file).length());
-	    		  System.out.println("Got the file");
+	    		  System.out.println("Got the file. Sent its length.");
 	    	  } else if (request.getHeader("Start") == null) {
 	    		  // If file present and byte range not specified
 	    		  PrintWriter out = response.getWriter();
 	    		  out.println(f.length());
+	    		  System.out.println("File length requested");
 	    	  } else {
 	    		  // Use output stream to write binary data
 	    		  OutputStream os = response.getOutputStream();
@@ -76,13 +77,13 @@ public class MainServlet extends HttpServlet {
 	    		  
 	    		  // Append checksum at the end
 	    		  MessageDigest md = MessageDigest.getInstance("MD5");
-	    		  byte[] chunk_with_checksum = new byte[16 + chunk_size];
+	    		  byte[] chunk_with_checksum = new byte[32 + chunk_size];
 	    		  byte[] md5 = md.digest(buffer);
 	    		  System.arraycopy(buffer, 0, chunk_with_checksum, 0, chunk_size);
-	    		  System.arraycopy(md5, 0, chunk_with_checksum, chunk_size, 16);
+	    		  System.arraycopy(bytesToHex(md5).getBytes(), 0, chunk_with_checksum, chunk_size, 32);
 	    		  
 	    		  // Send chunk
-	    		  response.setContentLengthLong(16 + end - start);
+	    		  response.setContentLengthLong(32 + end - start);
 	    		  response.setContentType("application/octet-stream");
 	    		  os.write(chunk_with_checksum);
 	    		  os.flush();
@@ -102,11 +103,18 @@ public class MainServlet extends HttpServlet {
     	  
 	      try {
 	    	  if (revId != null) {
-		    	  // Send it to the database.
-		    	  FileInputStream fi = new FileInputStream(docId);
-		    	  String resp_json = this.sendAttachment(fi, docId, revId);
-		    	  out.println(resp_json);
-		    	  Files.delete(Paths.get(docId));
+	    		  // Send it to the database.
+	    		  if (!new File(docId).exists()) {
+	    			  String resp_json = getDocInfo(docId);
+	    			  out.println(resp_json);
+	    			  System.out.println("File info sent.");
+	    		  } else {
+	    			  FileInputStream fi = new FileInputStream(docId);
+	    			  String resp_json = this.sendAttachment(fi, docId, revId);
+	    			  out.println(resp_json);
+	    			  Files.delete(Paths.get(docId));
+	    			  System.out.println("File sent to db.");
+	    		  }
 		      } else {
 		    	  // Receive file chunk
 				  long start = Long.parseLong(request.getHeader("Start"));
@@ -141,6 +149,17 @@ public class MainServlet extends HttpServlet {
 	      } finally {
 	    	  out.close();
 	      }
+	}
+	
+	private String getDocInfo(String docId) throws IOException{
+		URL url = new URL("http://" + SERVER + ":" + PORT + "/" + PATH + "/" + docId);
+		HttpURLConnection httpCon = (HttpURLConnection) url.openConnection();
+		httpCon.setDoOutput(true);
+		httpCon.setRequestMethod("GET");
+		InputStream response = httpCon.getInputStream();
+		String resp_str = convertStreamToString(response);
+		response.close();
+		return resp_str;
 	}
 	
 	private String getAttachment(String docId, String revId) throws IOException{
