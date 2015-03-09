@@ -16,6 +16,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -75,6 +77,8 @@ public class MainServlet extends HttpServlet {
 	    		  in.skip(start);
 	    		  in.read(buffer, 0, chunk_size);
 	    		  
+	    		  System.out.println(bytesToHex(Arrays.copyOfRange(buffer, 100, 120)));
+	    		  
 	    		  // Append checksum at the end
 	    		  MessageDigest md = MessageDigest.getInstance("MD5");
 	    		  byte[] chunk_with_checksum = new byte[32 + chunk_size];
@@ -104,17 +108,23 @@ public class MainServlet extends HttpServlet {
 	      try {
 	    	  if (revId != null) {
 	    		  // Send it to the database.
-	    		  if (!new File(docId).exists()) {
+	    		  if (!new File("in_"+docId).exists()) {
 	    			  String resp_json = getDocInfo(docId);
 	    			  out.println(resp_json);
 	    			  System.out.println("File info sent.");
 	    		  } else {
-	    			  FileInputStream fi = new FileInputStream(docId);
+	    			  FileInputStream fi = new FileInputStream("in_"+docId);
 	    			  String resp_json = this.sendAttachment(fi, docId, revId);
 	    			  out.println(resp_json);
-	    			  Files.delete(Paths.get(docId));
+	    			  Files.copy(Paths.get("in_"+docId), Paths.get("sent_"+docId));
+	    			  Files.delete(Paths.get("in_"+docId));
 	    			  System.out.println("File sent to db.");
 	    		  }
+		      } else if (request.getHeader("Start") == null) {
+		    	  // Create file
+		    	  File f = new File("in_"+docId);
+		    	  if (!f.exists()) f.createNewFile();
+		    	  response.setStatus(200);
 		      } else {
 		    	  // Receive file chunk
 				  long start = Long.parseLong(request.getHeader("Start"));
@@ -122,8 +132,8 @@ public class MainServlet extends HttpServlet {
 	    		  int chunk_size = (int) (end - start);
 				  String sent_md5 = request.getHeader("MD5");
 		    	  byte[] buffer = new byte[chunk_size];
-				  
-		    	  FileChannel fc = FileChannel.open(Paths.get(docId), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+				  // StandardOpenOption.CREATE,
+		    	  FileChannel fc = FileChannel.open(Paths.get("in_"+docId), StandardOpenOption.WRITE);
 			      InputStream is = request.getInputStream();
 		    	  is.read(buffer);
 		    	  fc.position(start);
@@ -132,8 +142,15 @@ public class MainServlet extends HttpServlet {
 		    	  
 		    	  // Compare the checksums
 		    	  if (sent_md5.equals(bytesToHex(buffer_md5))) {
-		    		  fc.write(ByteBuffer.wrap(buffer));
-		    		  out.println("Chunk received");
+//		    		  System.out.println(bytesToHex(Arrays.copyOfRange(buffer, 100, 120)));
+		    		  int written_bytes = fc.write(ByteBuffer.wrap(buffer));
+		    		  if (written_bytes == chunk_size) {
+		    			  out.println("Chunk received " + start);
+//		    			  out.println("Chunk received");
+		    		  } else {
+			    		  out.println("Not received.");
+		    		  }
+//		    		  System.out.println("Chunk "+ start +" received");
 		    	  } else {
 			    	  System.out.println("Checksum mismatch");
 		    		  out.println("Not received.");
@@ -143,6 +160,10 @@ public class MainServlet extends HttpServlet {
 		      }		      
 	      } catch (SocketTimeoutException e) {
 	    	  System.out.println("Server timeout.");
+	    	  out.println("Not received.");
+	      } catch (IOException e) {
+	    	  System.out.println("IO exception");
+//	    	  e.printStackTrace();
 	    	  out.println("Not received.");
 	      } catch (NoSuchAlgorithmException e) {
 	    	  e.printStackTrace();
