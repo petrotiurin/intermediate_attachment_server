@@ -57,12 +57,10 @@ public class MainServlet extends HttpServlet {
 	    		  PrintWriter out = response.getWriter();
 	    		  String file = getAttachment(docId, revId);
 	    		  out.println(new File(file).length());
-	    		  System.out.println("Got the file. Sent its length.");
 	    	  } else if (request.getHeader("Start") == null) {
 	    		  // If file present and byte range not specified
 	    		  PrintWriter out = response.getWriter();
 	    		  out.println(f.length());
-	    		  System.out.println("File length requested");
 	    	  } else {
 	    		  // Use output stream to write binary data
 	    		  OutputStream os = response.getOutputStream();
@@ -76,8 +74,6 @@ public class MainServlet extends HttpServlet {
 	    		  FileInputStream in = new FileInputStream(f);
 	    		  in.skip(start);
 	    		  in.read(buffer, 0, chunk_size);
-	    		  
-	    		  System.out.println(bytesToHex(Arrays.copyOfRange(buffer, 100, 120)));
 	    		  
 	    		  // Append checksum at the end
 	    		  MessageDigest md = MessageDigest.getInstance("MD5");
@@ -111,14 +107,11 @@ public class MainServlet extends HttpServlet {
 	    		  if (!new File("in_"+docId).exists()) {
 	    			  String resp_json = getDocInfo(docId);
 	    			  out.println(resp_json);
-	    			  System.out.println("File info sent.");
 	    		  } else {
 	    			  FileInputStream fi = new FileInputStream("in_"+docId);
 	    			  String resp_json = this.sendAttachment(fi, docId, revId);
 	    			  out.println(resp_json);
-	    			  Files.copy(Paths.get("in_"+docId), Paths.get("sent_"+docId));
 	    			  Files.delete(Paths.get("in_"+docId));
-	    			  System.out.println("File sent to db.");
 	    		  }
 		      } else if (request.getHeader("Start") == null) {
 		    	  // Create file
@@ -142,31 +135,23 @@ public class MainServlet extends HttpServlet {
 		    	  
 		    	  // Compare the checksums
 		    	  if (sent_md5.equals(bytesToHex(buffer_md5))) {
-//		    		  System.out.println(bytesToHex(Arrays.copyOfRange(buffer, 100, 120)));
 		    		  int written_bytes = fc.write(ByteBuffer.wrap(buffer));
 		    		  if (written_bytes == chunk_size) {
 		    			  out.println("Chunk received " + start);
-//		    			  out.println("Chunk received");
 		    		  } else {
 			    		  out.println("Not received.");
 		    		  }
-//		    		  System.out.println("Chunk "+ start +" received");
 		    	  } else {
-			    	  System.out.println("Checksum mismatch");
 		    		  out.println("Not received.");
 		    	  }
 		    	  fc.close();
 		    	  is.close();
 		      }		      
-	      } catch (SocketTimeoutException e) {
-	    	  System.out.println("Server timeout.");
-	    	  out.println("Not received.");
 	      } catch (IOException e) {
-	    	  System.out.println("IO exception");
-//	    	  e.printStackTrace();
 	    	  out.println("Not received.");
 	      } catch (NoSuchAlgorithmException e) {
 	    	  e.printStackTrace();
+	    	  out.println("Not received.");
 	      } finally {
 	    	  out.close();
 	      }
