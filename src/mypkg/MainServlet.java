@@ -1,22 +1,18 @@
 package mypkg;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -163,7 +159,8 @@ public class MainServlet extends HttpServlet {
 		httpCon.setDoOutput(true);
 		httpCon.setRequestMethod("GET");
 		InputStream response = httpCon.getInputStream();
-		String resp_str = convertStreamToString(response);
+		String resp_str = IOUtils.toString(response);
+		resp_str = resp_str.trim();
 		response.close();
 		return resp_str;
 	}
@@ -195,22 +192,10 @@ public class MainServlet extends HttpServlet {
 		IOUtils.copy(fi,out);
 		out.close();
 		InputStream response = httpCon.getInputStream();
-		String resp_str = convertStreamToString(response);
+		String resp_str = IOUtils.toString(response);
+		resp_str = resp_str.trim();
 		response.close();
 		return resp_str;
-	}
-	
-	// Read server response into string
-	private static String convertStreamToString(InputStream in) throws IOException{
-	    InputStreamReader is = new InputStreamReader(in);
-		StringBuilder sb=new StringBuilder();
-		BufferedReader br = new BufferedReader(is);
-		String read = br.readLine();
-		while(read != null) {
-		    sb.append(read);
-		    read =br.readLine();
-		}
-		return sb.toString();
 	}
 	
 	public static String bytesToHex(byte[] bytes) {
