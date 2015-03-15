@@ -13,6 +13,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -37,8 +39,12 @@ public class MainServlet extends HttpServlet {
 	private static String SERVER = "127.0.0.1";
 	private static String PORT = "5984";
 	
+	private ExecutorService executor;
+	
     public MainServlet() {
         super();
+		// Set up number of available threads
+		this.executor = Executors.newFixedThreadPool(8); 
     }
 
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -52,11 +58,13 @@ public class MainServlet extends HttpServlet {
 	    		  // Get the file and output its length
 	    		  PrintWriter out = response.getWriter();
 	    		  String file = getAttachment(docId, revId);
-	    		  out.println(new File(file).length());
+	    		  System.out.println(new File(file).length());
+	    		  out.println(String.valueOf(new File(file).length()));
 	    	  } else if (request.getHeader("Start") == null) {
 	    		  // If file present and byte range not specified
 	    		  PrintWriter out = response.getWriter();
-	    		  out.println(f.length());
+	    		  System.out.println(f.length());
+	    		  out.println(String.valueOf(f.length()));
 	    	  } else {
 	    		  // Use output stream to write binary data
 	    		  OutputStream os = response.getOutputStream();
@@ -100,14 +108,16 @@ public class MainServlet extends HttpServlet {
 	      try {
 	    	  if (revId != null) {
 	    		  // Send it to the database.
-	    		  if (!new File("in_"+docId).exists()) {
+	    		  if (!new File("in_"+docId).exists() && !new File("out_"+docId).exists()) {
 	    			  String resp_json = getDocInfo(docId);
 	    			  out.println(resp_json);
+	    		  } else if (!new File("out_"+docId).exists()) {
+	    			  URL url = new URL("http://" + SERVER + ":" + PORT + "/" + PATH + "/" + docId + "/" + "attachment");
+	    			  new File("in_"+docId).renameTo(new File("out_"+docId));
+	    			  executor.submit(new AsyncSendFile(url, revId, docId));
+	    	    	  out.println("Not received.");
 	    		  } else {
-	    			  FileInputStream fi = new FileInputStream("in_"+docId);
-	    			  String resp_json = this.sendAttachment(fi, docId, revId);
-	    			  out.println(resp_json);
-	    			  Files.delete(Paths.get("in_"+docId));
+	    	    	  out.println("Not received.");
 	    		  }
 		      } else if (request.getHeader("Start") == null) {
 		    	  // Create file
@@ -175,10 +185,10 @@ public class MainServlet extends HttpServlet {
 		InputStream response = httpCon.getInputStream();
 		String filepath = docId;
 		FileOutputStream fs = new FileOutputStream(filepath);
-		IOUtils.copy(response,fs);
+		bufferredCopy(response, fs);
 		response.close();
 		fs.close();
-		return filepath;
+		return filepath;	
 	}
 	
 	private String sendAttachment(FileInputStream fi, String docId, String revId) throws IOException {
@@ -188,8 +198,9 @@ public class MainServlet extends HttpServlet {
 		httpCon.setRequestMethod("PUT");
 		httpCon.setRequestProperty("Content-Type", "application/octet-stream");
 		httpCon.setRequestProperty("If-Match", revId);
+		httpCon.setChunkedStreamingMode(4096);
 		OutputStream out = httpCon.getOutputStream();
-		IOUtils.copy(fi,out);
+		bufferredCopy(fi,out);
 		out.close();
 		InputStream response = httpCon.getInputStream();
 		String resp_str = IOUtils.toString(response);
@@ -198,7 +209,16 @@ public class MainServlet extends HttpServlet {
 		return resp_str;
 	}
 	
-	public static String bytesToHex(byte[] bytes) {
+	private static void bufferredCopy(InputStream is, OutputStream out) throws IOException{
+		 byte[] buffer = new byte[4096];
+		    int length;
+		    while ((length = is.read(buffer)) > 0) {
+		    	out.write(buffer, 0, length);
+		    }
+		    out.flush();
+	}
+	
+	private static String bytesToHex(byte[] bytes) {
 		char[] hexArray = "0123456789ABCDEF".toCharArray();
 	    char[] hexChars = new char[bytes.length * 2];
 	    for ( int j = 0; j < bytes.length; j++ ) {
